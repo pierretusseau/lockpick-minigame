@@ -1,6 +1,7 @@
 /**
- * The challenge, in this order: lock or trap, DC set by the GM, the character's bonus, the d20
- * rolled at the table — and only then the resulting lock (see `resolveChallenge`).
+ * The challenge, kept to the minimum: DC set by the GM, the character's bonus, the d20 rolled at
+ * the table — then the resulting lock in a coloured frame (see `resolveChallenge`). The maths are
+ * explained in the help dialog, the d20 tiers in a tooltip.
  */
 import { useState } from 'react';
 import Box from '@mui/material/Box';
@@ -10,11 +11,10 @@ import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { resolveChallenge, type GameSetup, type RollOutcome } from '../engine';
-import { useI18n, type Kind } from '../i18n';
+import { useI18n } from '../i18n';
 import { COLORS } from './theme';
 
 /** Standard DC ladder (very easy → nearly impossible). */
@@ -30,10 +30,6 @@ const ROLL_TONES: Record<RollOutcome, string> = {
   critical: COLORS.fit,
 };
 
-function signed(n: number): string {
-  return n >= 0 ? `+${n}` : `${n}`;
-}
-
 /** Typed integer, or `null` when the field is empty or invalid. */
 function parseInteger(text: string): number | null {
   if (text.trim() === '') return null;
@@ -42,19 +38,24 @@ function parseInteger(text: string): number | null {
 }
 
 export interface ChallengeFormProps {
-  kind: Kind;
-  onKindChange: (kind: Kind) => void;
+  /** Bumped by "New challenge": the d20 field is cleared, the DC and bonus stay. */
+  round: number;
   houseTiers: boolean;
   onHouseTiersChange: (value: boolean) => void;
   onStart: (setup: GameSetup) => void;
 }
 
-export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChange, onStart }: ChallengeFormProps) {
+export function ChallengeForm({ round, houseTiers, onHouseTiersChange, onStart }: ChallengeFormProps) {
   const { t } = useI18n();
   const [choice, setChoice] = useState<string>('15');
   const [customText, setCustomText] = useState('');
-  const [bonusText, setBonusText] = useState('5');
+  const [bonusText, setBonusText] = useState('');
   const [rollText, setRollText] = useState('');
+  const [seenRound, setSeenRound] = useState(round);
+  if (round !== seenRound) {
+    setSeenRound(round);
+    setRollText('');
+  }
 
   const dc = choice === CUSTOM ? parseInteger(customText) : Number(choice);
   const bonus = parseInteger(bonusText) ?? 0;
@@ -63,20 +64,19 @@ export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChan
   const result = dc !== null && rollValid ? resolveChallenge({ dc, bonus, roll, houseTiers }) : null;
 
   const levelLabel = result && result.level !== 'automatic' ? t.levels[result.level] : '';
-  const texts = t.result[kind];
   const title = !result
     ? null
     : result.outcome === 'fumble'
-      ? texts.fumble
+      ? t.result.fumble
       : result.outcome === 'critical'
-        ? texts.critical
+        ? t.result.critical
         : result.level === 'automatic'
-          ? texts.automatic
+          ? t.result.automatic
           : result.outcome === 'poor'
-            ? texts.poor(levelLabel)
+            ? t.result.poor(levelLabel)
             : result.outcome === 'good'
-              ? texts.good(levelLabel)
-              : texts.level(levelLabel);
+              ? t.result.good(levelLabel)
+              : t.result.level(levelLabel);
   const text = !result
     ? null
     : result.outcome === 'fumble'
@@ -88,17 +88,6 @@ export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChan
 
   return (
     <Stack spacing={2}>
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={kind}
-        onChange={(_, value: Kind | null) => value && onKindChange(value)}
-        sx={{ alignSelf: 'flex-start' }}
-      >
-        <ToggleButton value="lock">{t.kindLabel.lock}</ToggleButton>
-        <ToggleButton value="trap">{t.kindLabel.trap}</ToggleButton>
-      </ToggleButtonGroup>
-
       <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
         <TextField select size="small" label={t.dcLabel} value={choice} onChange={(e) => setChoice(e.target.value)} sx={{ flex: '1 1 220px' }}>
           {DC_VALUES.map((value, i) => (
@@ -115,7 +104,7 @@ export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChan
             label={t.dcShort}
             value={customText}
             onChange={(e) => setCustomText(e.target.value)}
-            sx={{ width: 100 }}
+            sx={{ width: 110 }}
             slotProps={{ htmlInput: { min: 0, max: 60 } }}
             autoFocus
           />
@@ -126,8 +115,7 @@ export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChan
           label={t.bonusLabel}
           value={bonusText}
           onChange={(e) => setBonusText(e.target.value)}
-          helperText={t.bonusHelp}
-          sx={{ width: 160 }}
+          sx={{ width: 120 }}
           slotProps={{ htmlInput: { 'data-testid': 'challenge-bonus' } }}
         />
         <TextField
@@ -137,37 +125,29 @@ export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChan
           value={rollText}
           onChange={(e) => setRollText(e.target.value)}
           error={rollText !== '' && !rollValid}
-          helperText={rollText !== '' && !rollValid ? t.rollError : t.rollHelp}
-          sx={{ width: 220 }}
+          helperText={rollText !== '' && !rollValid ? t.rollError : undefined}
+          sx={{ width: 120 }}
           slotProps={{ htmlInput: { min: 1, max: 20, 'data-testid': 'challenge-roll' } }}
         />
       </Stack>
 
-      <Box>
+      <Tooltip
+        placement="right"
+        title={
+          <Box component="ul" sx={{ m: 0, pl: 2 }}>
+            {t.tiersHelp.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </Box>
+        }
+      >
         <FormControlLabel
+          sx={{ alignSelf: 'flex-start', mt: '8px !important' }}
           control={<Switch size="small" checked={houseTiers} onChange={(e) => onHouseTiersChange(e.target.checked)} />}
           label={<Typography variant="body2">{t.tiersLabel}</Typography>}
+          data-testid="tiers-switch"
         />
-        {houseTiers && (
-          <Typography variant="caption" color="text.secondary" component="div">
-            {t.tiersHelp}
-          </Typography>
-        )}
-        <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
-          {t.rollExplain}
-        </Typography>
-      </Box>
-
-      {dc !== null && (
-        <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }} data-testid="challenge-breakdown">
-          <Typography variant="body2">{t.breakdownBase(dc, signed(bonus), dc - bonus)}</Typography>
-          {result && result.outcome !== 'fumble' && (
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              {t.breakdownRoll(roll!, result.rollShift, result.gap)}
-            </Typography>
-          )}
-        </Box>
-      )}
+      </Tooltip>
 
       {result && tone && title ? (
         <Box
@@ -191,7 +171,7 @@ export function ChallengeForm({ kind, onKindChange, houseTiers, onHouseTiersChan
       {result?.setup && (
         <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
           <Button variant="contained" onClick={() => onStart(result.setup!)} data-testid="challenge-start">
-            {result.alreadyOpen ? t.playForFun : t.startButton[kind]}
+            {result.alreadyOpen ? t.playForFun : t.startButton}
           </Button>
         </Stack>
       )}

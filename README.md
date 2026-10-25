@@ -34,9 +34,9 @@ Works with any d20 system (D&D 5e / 2024, Pathfinder, Chroniques Oubliées…). 
 
 The table decides what failing means: giving up, running out of time, making noise…
 
-### Optional house rule: d20 tiers
+### House rule: d20 tiers
 
-Off by default (in D&D a natural 1 or 20 does nothing special on an ability check). When on, the raw die also colours the attempt:
+On by default; untick it for rules as written (in D&D a natural 1 or 20 does nothing special on an ability check). When on, the raw die also colours the attempt:
 
 | d20     | Effect |
 |---------|--------|
@@ -56,7 +56,7 @@ Off by default (in D&D a natural 1 or 20 does nothing special on an ability chec
 
 ### Same lock for everyone
 
-The URL holds the lock (`?seed=abc123&level=expert`). **Copy link** and send it: everyone gets exactly the same lock, handy for a race at the table.
+The URL holds the lock (`?seed=abc123&level=expert`). Open **Settings** (top right), **Copy link** and send it: everyone gets exactly the same lock, handy for a race at the table. Settings also let you play any level directly.
 
 ## Development
 
@@ -92,4 +92,4 @@ Un mini-jeu de crochetage façon Starfield pour le jeu de rôle sur table. Le MJ
 3. Écart final = (DD − bonus) − (d20 − 10), qui donne le niveau de la serrure (tableau ci-dessus). Un test réussi selon les règles donne au plus une serrure Avancée.
 4. On remplit les encoches de chaque anneau avec les crochets, de l'extérieur vers le centre. Attention aux leurres.
 
-Les **paliers du d20** (1 : échec critique, 2 à 5 : mauvais jet, 18-19 : aide en vert, 20 : réussite) sont une règle maison facultative, désactivée par défaut. Le lien de la page contient la serrure : envoyez-le pour que tout le monde joue la même. Interface en français ou en anglais, à la souris ou au doigt.
+Les **paliers du d20** (1 : échec critique, 2 à 5 : mauvais jet, 18-19 : aide en vert, 20 : réussite) sont une règle maison, activée par défaut et décochable. Le lien de la page contient la serrure : « Copier le lien » dans les Réglages, et tout le monde joue la même. Interface en français ou en anglais, à la souris ou au doigt.

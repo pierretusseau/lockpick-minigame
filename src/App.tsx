@@ -1,17 +1,23 @@
 /**
- * Single page, in three blocks: the challenge (DC, bonus, d20 → lock), the settings (direct level,
- * seed, sounds…) and the lock itself.
+ * Single page with two phases:
+ * - the challenge (DC, bonus, d20 → coloured result frame);
+ * - the lock, once "Pick the lock" is pressed: the challenge hides and only the lock remains, with
+ *   its sound and vibration buttons and a "New challenge" button to go back.
+ * Settings (direct level, seed, shared link…) and the help live in dialogs.
  *
- * URL parameters `?seed=abc123&level=expert&kind=trap` reopen a precise lock: the GM can send the
- * same link to every player.
+ * URL parameters `?seed=abc123&level=expert` open a precise lock straight away: the GM can send
+ * the same link to every player.
  */
 import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
-import Link from '@mui/material/Link';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import Snackbar from '@mui/material/Snackbar';
@@ -23,6 +29,12 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import GitHubIcon from '@mui/icons-material/GitHub';
+import HelpOutlineRoundedIcon from '@mui/icons-material/HelpOutlineRounded';
+import MobileOffRoundedIcon from '@mui/icons-material/MobileOffRounded';
+import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
+import VibrationRoundedIcon from '@mui/icons-material/VibrationRounded';
+import VolumeOffRoundedIcon from '@mui/icons-material/VolumeOffRounded';
+import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded';
 import {
   LOCK_LEVEL_ORDER,
   LOCK_LEVEL_ROLL_RANGES,
@@ -32,7 +44,7 @@ import {
   type GameSetup,
   type LockLevel,
 } from './engine';
-import { useI18n, type Kind, type Lang } from './i18n';
+import { useI18n, type Lang } from './i18n';
 import { STORAGE_KEYS, usePersistedBoolean } from './storage';
 import { ChallengeForm } from './components/ChallengeForm';
 import { LockpickBoard } from './components/LockpickBoard';
@@ -49,35 +61,39 @@ function isLevel(value: string | null): value is LockLevel {
 interface Game {
   seed: string;
   level: LockLevel;
-  kind: Kind;
   aid: boolean;
   foundHints: boolean;
   hardened: boolean;
 }
 
-function gameFromUrl(): Game {
+const PLAIN = { aid: false, foundHints: true, hardened: false };
+
+/** A shared link opens its lock directly; otherwise we start with the challenge. */
+function initialState(): { game: Game; playing: boolean } {
   const params = new URLSearchParams(window.location.search);
+  const seed = params.get('seed');
   const level = params.get('level');
   return {
-    seed: params.get('seed') || newSeed(),
-    level: isLevel(level) ? level : 'advanced',
-    kind: params.get('kind') === 'trap' ? 'trap' : 'lock',
-    aid: false,
-    foundHints: true,
-    hardened: false,
+    game: { seed: seed || newSeed(), level: isLevel(level) ? level : 'advanced', ...PLAIN },
+    playing: !!seed,
   };
 }
 
 export default function App() {
   const { t, lang, setLang } = useI18n();
-  const [game, setGame] = useState<Game>(gameFromUrl);
+  const [initial] = useState(initialState);
+  const [game, setGame] = useState<Game>(initial.game);
+  const [playing, setPlaying] = useState(initial.playing);
   const [round, setRound] = useState(0);
+  const [challengeRound, setChallengeRound] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [seedDraft, setSeedDraft] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [muted, setMuted] = usePersistedBoolean(STORAGE_KEYS.soundMuted, false);
   const [vibrationOff, setVibrationOff] = usePersistedBoolean(STORAGE_KEYS.vibrationOff, false);
   const [highlightFits, setHighlightFits] = usePersistedBoolean(STORAGE_KEYS.highlightFits, false);
-  const [houseTiers, setHouseTiers] = usePersistedBoolean(STORAGE_KEYS.houseTiers, false);
+  const [houseTiers, setHouseTiers] = usePersistedBoolean(STORAGE_KEYS.houseTiers, true);
   const [vibrationSupported] = useState(canVibrate);
 
   const lock = useMemo(
@@ -85,42 +101,58 @@ export default function App() {
     [game.seed, game.level, game.hardened],
   );
 
-  // The URL always describes the lock on screen, ready to be shared.
+  // While playing, the URL describes the lock on screen, ready to be shared.
   useEffect(() => {
-    const params = new URLSearchParams({ seed: game.seed, level: game.level });
-    if (game.kind === 'trap') params.set('kind', 'trap');
-    window.history.replaceState(null, '', `?${params.toString()}`);
-  }, [game.seed, game.level, game.kind]);
+    const query = playing ? `?${new URLSearchParams({ seed: game.seed, level: game.level }).toString()}` : '';
+    window.history.replaceState(null, '', `${window.location.pathname}${query}`);
+  }, [playing, game.seed, game.level]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
     document.title = t.appTitle;
   }, [lang, t.appTitle]);
 
-  /** A lock chosen directly in the settings: no roll effect. */
-  const setPlain = (patch: Partial<Pick<Game, 'seed' | 'level'>>) => {
+  /** A lock chosen in the settings: no roll effect. */
+  const playPlain = (patch: Partial<Pick<Game, 'seed' | 'level'>>) => {
     setSeedDraft(null);
-    setGame((g) => ({ ...g, ...patch, aid: false, foundHints: true, hardened: false }));
+    setGame((g) => ({ ...g, ...patch, ...PLAIN }));
+    setPlaying(true);
   };
 
   const startChallenge = (setup: GameSetup) => {
     setSeedDraft(null);
-    setGame((g) => ({ ...g, seed: newSeed(), ...setup }));
-    window.setTimeout(() => document.getElementById('board')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    setGame({ seed: newSeed(), ...setup });
+    setPlaying(true);
+    window.scrollTo({ top: 0 });
+  };
+
+  const newChallenge = () => {
+    setChallengeRound((r) => r + 1);
+    setPlaying(false);
   };
 
   const draft = seedDraft ?? game.seed;
-  const levelName = t.levels[game.level];
+  const iconSx = { color: COLORS.steel };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }}>
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1 }}>
+    <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
         <Box sx={{ color: COLORS.brassBright, display: 'flex' }}>
-          <LockpicksIcon size={36} />
+          <LockpicksIcon size={32} />
         </Box>
-        <Typography variant="h4" component="h1" sx={{ flex: 1, fontWeight: 700, fontSize: { xs: '1.6rem', sm: '2.125rem' } }}>
+        <Typography variant="h4" component="h1" sx={{ flex: 1, fontWeight: 700, fontSize: { xs: '1.35rem', sm: '2rem' } }}>
           {t.appTitle}
         </Typography>
+        <Tooltip title={t.help}>
+          <IconButton aria-label={t.help} onClick={() => setHelpOpen(true)} data-testid="open-help">
+            <HelpOutlineRoundedIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={t.settings}>
+          <IconButton aria-label={t.settings} onClick={() => setSettingsOpen(true)} data-testid="open-settings">
+            <TuneRoundedIcon />
+          </IconButton>
+        </Tooltip>
         <ToggleButtonGroup
           exclusive
           size="small"
@@ -132,122 +164,156 @@ export default function App() {
           <ToggleButton value="fr">FR</ToggleButton>
         </ToggleButtonGroup>
         <Tooltip title={t.sourceCode}>
-          <IconButton component="a" href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={t.sourceCode}>
+          <IconButton component="a" href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={t.sourceCode} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <GitHubIcon />
           </IconButton>
         </Tooltip>
       </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {t.intro}
-      </Typography>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
+      {/* Kept mounted while playing: the DC and bonus are still there for the next challenge. */}
+      <Paper sx={{ p: 2, display: playing ? 'none' : 'block', maxWidth: 720, mx: 'auto' }} data-testid="challenge">
         <Typography variant="h6" component="h2" gutterBottom>
           {t.challengeTitle}
         </Typography>
-        <ChallengeForm
-          kind={game.kind}
-          onKindChange={(kind) => setGame((g) => ({ ...g, kind }))}
-          houseTiers={houseTiers}
-          onHouseTiersChange={setHouseTiers}
-          onStart={startChallenge}
-        />
+        <ChallengeForm round={challengeRound} houseTiers={houseTiers} onHouseTiersChange={setHouseTiers} onStart={startChallenge} />
       </Paper>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle1" component="h2" gutterBottom sx={{ fontWeight: 700 }}>
-          {t.settingsTitle}
-        </Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' }, flexWrap: 'wrap', rowGap: 1.5 }}>
-          <TextField
-            select
-            size="small"
-            label={t.levelLabel}
-            value={game.level}
-            onChange={(e) => setPlain({ level: e.target.value as LockLevel })}
-            sx={{ minWidth: 240 }}
-            slotProps={{ htmlInput: { 'data-testid': 'level-select' } }}
-          >
-            {LOCK_LEVEL_ORDER.map((l) => (
-              <MenuItem key={l} value={l}>
-                {t.levels[l]}
-                <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                  ({t.gapRange(LOCK_LEVEL_ROLL_RANGES[l].min, LOCK_LEVEL_ROLL_RANGES[l].max)})
-                </Typography>
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            size="small"
-            label={t.seedLabel}
-            value={draft}
-            onChange={(e) => setSeedDraft(e.target.value.trim())}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && draft) setPlain({ seed: draft });
-            }}
-            sx={{ width: 140 }}
-          />
-          <Button variant="outlined" onClick={() => draft && setPlain({ seed: draft })} disabled={!draft || draft === game.seed}>
-            {t.load}
-          </Button>
-          <Button variant="contained" onClick={() => setPlain({ seed: newSeed() })}>
-            {t.newLock}
-          </Button>
-          <Button onClick={() => setRound((r) => r + 1)}>{t.restart}</Button>
-          <Button
-            onClick={() => {
-              void navigator.clipboard?.writeText(window.location.href);
-              setCopied(true);
-            }}
-          >
-            {t.copyLink}
-          </Button>
-        </Stack>
-        <Stack direction="row" spacing={2} sx={{ mt: 1, flexWrap: 'wrap' }}>
-          <FormControlLabel control={<Switch checked={highlightFits} onChange={(e) => setHighlightFits(e.target.checked)} />} label={t.highlightFits} />
-          <FormControlLabel control={<Switch checked={!muted} onChange={(e) => setMuted(!e.target.checked)} />} label={t.sounds} />
-          {vibrationSupported && (
-            <FormControlLabel control={<Switch checked={!vibrationOff} onChange={(e) => setVibrationOff(!e.target.checked)} />} label={t.vibrations} />
-          )}
-        </Stack>
-      </Paper>
-
-      <Paper id="board" sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: COLORS.background, backgroundImage: 'none', scrollMarginTop: 8 }}>
-        <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 700, color: COLORS.gold }} data-testid="board-title">
-          {t.boardTitle[game.kind](levelName)}
-          {game.aid ? t.flagAid : ''}
-          {game.foundHints ? '' : t.flagNoHints}
-          {game.hardened ? t.flagHardened : ''}
-        </Typography>
-        <LockpickBoard
-          key={`${game.seed}:${game.level}:${game.hardened}:${round}`}
-          lock={lock}
-          kind={game.kind}
-          muted={muted}
-          vibration={!vibrationOff}
-          highlightFits={game.aid || highlightFits}
-          foundHints={game.foundHints}
-        />
-      </Paper>
-
-      <Box sx={{ mt: 3 }}>
-        <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 700 }}>
-          {t.howTitle}
-        </Typography>
-        <Box component="ul" sx={{ mt: 0.5, pl: 3, color: 'text.secondary' }}>
-          {t.how.map((line) => (
-            <Typography component="li" variant="body2" key={line}>
-              {line}
+      {playing && (
+        <Paper sx={{ p: { xs: 1.5, sm: 2.5 }, bgcolor: COLORS.background, backgroundImage: 'none' }}>
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', mb: 1.5, flexWrap: 'wrap', rowGap: 0.5 }}>
+            <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 700, color: COLORS.gold, minWidth: 0 }} data-testid="board-title">
+              {t.boardTitle(t.levels[game.level])}
+              {game.aid ? t.flagAid : ''}
+              {game.foundHints ? '' : t.flagNoHints}
+              {game.hardened ? t.flagHardened : ''}
             </Typography>
-          ))}
-        </Box>
-        <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 2 }}>
-          {t.credits}{' '}
-          <Link href={REPO_URL} target="_blank" rel="noopener noreferrer">
+            <Button size="small" onClick={newChallenge} data-testid="new-challenge">
+              {t.newChallenge}
+            </Button>
+            {vibrationSupported && (
+              <Tooltip title={vibrationOff ? t.vibrationOn : t.vibrationOff}>
+                <IconButton aria-label={vibrationOff ? t.vibrationOn : t.vibrationOff} onClick={() => setVibrationOff(!vibrationOff)} sx={iconSx}>
+                  {vibrationOff ? <MobileOffRoundedIcon /> : <VibrationRoundedIcon />}
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title={muted ? t.soundOn : t.soundOff}>
+              <IconButton aria-label={muted ? t.soundOn : t.soundOff} onClick={() => setMuted(!muted)} sx={iconSx} data-testid="toggle-sound">
+                {muted ? <VolumeOffRoundedIcon /> : <VolumeUpRoundedIcon />}
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <LockpickBoard
+            key={`${game.seed}:${game.level}:${game.hardened}:${round}`}
+            lock={lock}
+            muted={muted}
+            vibration={!vibrationOff}
+            highlightFits={game.aid || highlightFits}
+            foundHints={game.foundHints}
+          />
+        </Paper>
+      )}
+
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t.settings}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t.settingsIntro}
+          </Typography>
+          <Stack spacing={2}>
+            <TextField
+              select
+              size="small"
+              label={t.levelLabel}
+              value={game.level}
+              onChange={(e) => playPlain({ level: e.target.value as LockLevel })}
+              slotProps={{ htmlInput: { 'data-testid': 'level-select' } }}
+            >
+              {LOCK_LEVEL_ORDER.map((l) => (
+                <MenuItem key={l} value={l}>
+                  {t.levels[l]}
+                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    ({t.gapRange(LOCK_LEVEL_ROLL_RANGES[l].min, LOCK_LEVEL_ROLL_RANGES[l].max)})
+                  </Typography>
+                </MenuItem>
+              ))}
+            </TextField>
+            <Stack direction="row" spacing={1}>
+              <TextField
+                size="small"
+                label={t.seedLabel}
+                value={draft}
+                onChange={(e) => setSeedDraft(e.target.value.trim())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && draft) playPlain({ seed: draft });
+                }}
+                sx={{ flex: 1 }}
+              />
+              <Button variant="outlined" onClick={() => draft && playPlain({ seed: draft })} disabled={!draft || (playing && draft === game.seed)}>
+                {t.load}
+              </Button>
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+              <Button variant="contained" onClick={() => playPlain({ seed: newSeed() })}>
+                {t.newLock}
+              </Button>
+              <Button
+                onClick={() => {
+                  setRound((r) => r + 1);
+                  setPlaying(true);
+                }}
+              >
+                {t.restart}
+              </Button>
+              <Button
+                disabled={!playing}
+                onClick={() => {
+                  void navigator.clipboard?.writeText(window.location.href);
+                  setCopied(true);
+                }}
+              >
+                {t.copyLink}
+              </Button>
+            </Stack>
+            <FormControlLabel control={<Switch checked={highlightFits} onChange={(e) => setHighlightFits(e.target.checked)} />} label={t.highlightFits} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsOpen(false)}>{t.close}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t.howTitle}</DialogTitle>
+        <DialogContent>
+          <Box component="ul" sx={{ mt: 0, pl: 2.5 }}>
+            {t.how.map((line) => (
+              <Typography component="li" variant="body2" key={line} sx={{ mb: 0.75 }}>
+                {line}
+              </Typography>
+            ))}
+          </Box>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mt: 2 }}>
+            {t.rulesTitle}
+          </Typography>
+          <Box component="ul" sx={{ mt: 0.5, pl: 2.5 }}>
+            {t.rules.map((line) => (
+              <Typography component="li" variant="body2" key={line} sx={{ mb: 0.75 }}>
+                {line}
+              </Typography>
+            ))}
+          </Box>
+          <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 2 }}>
+            {t.credits}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button component="a" href={REPO_URL} target="_blank" rel="noopener noreferrer" startIcon={<GitHubIcon />}>
             GitHub
-          </Link>
-        </Typography>
-      </Box>
+          </Button>
+          <Button onClick={() => setHelpOpen(false)}>{t.close}</Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={copied} autoHideDuration={2500} onClose={() => setCopied(false)} message={t.linkCopied} />
     </Container>

@@ -37,7 +37,7 @@ import {
   type Lock,
   type LockpickState,
 } from '../engine';
-import { useI18n, type Kind } from '../i18n';
+import { useI18n } from '../i18n';
 import { LockpicksIcon } from './LockpicksIcon';
 import { PickGlyph } from './PickGlyph';
 import { COLORS as C } from './theme';
@@ -45,7 +45,6 @@ import { playSound, vibrate, type GameSound } from './sound';
 
 export interface LockpickBoardProps {
   lock: Lock;
-  kind?: Kind;
   muted?: boolean;
   /** Vibrations (Android) matching the sounds — independent from muting. */
   vibration?: boolean;
@@ -103,7 +102,6 @@ function Slot({ radius, position, width, height, fill, opacity = 1 }: { radius: 
 
 export function LockpickBoard({
   lock,
-  kind = 'lock',
   muted = false,
   vibration = true,
   highlightFits = false,
@@ -340,7 +338,7 @@ export function LockpickBoard({
               viewBox={`0 0 ${VIEW} ${VIEW}`}
               width="100%"
               role="img"
-              aria-label={solved ? t.solved[kind] : `${t.boardAria[kind]}, ${t.ringAria(ring + 1, lock.rings.length)}`}
+              aria-label={solved ? t.solved : `${t.boardAria}, ${t.ringAria(ring + 1, lock.rings.length)}`}
               style={{ touchAction: 'none', cursor: solved ? 'default' : 'grab', display: 'block', userSelect: 'none' }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
@@ -521,7 +519,7 @@ export function LockpickBoard({
                 variant="h5"
                 sx={{ fontWeight: 800, color: C.gold, textShadow: '0 2px 12px #000, 0 0 2px #000', px: 2, py: 1, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.55)' }}
               >
-                {t.solved[kind]}
+                {t.solved}
               </Typography>
             </Box>
           )}
