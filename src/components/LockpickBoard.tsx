@@ -37,6 +37,7 @@ import {
   type Lock,
   type LockpickState,
 } from '../engine';
+import { formatDuration } from '../format';
 import { useI18n } from '../i18n';
 import { LockpicksIcon } from './LockpicksIcon';
 import { PickGlyph } from './PickGlyph';
@@ -52,7 +53,15 @@ export interface LockpickBoardProps {
   highlightFits?: boolean;
   /** Yellow mark on found positions. Default: on. */
   foundHints?: boolean;
-  onSolved?: () => void;
+  /** Time limit (ms): the attempt fails once it is reached. */
+  timeLimitMs?: number;
+  /** The timer counts the time LEFT (default). Off: it counts up, the limit stays a surprise. */
+  showTimeLimit?: boolean;
+  /** Resumed attempt: when "Start" was pressed. The timer keeps running across reloads. */
+  startedAt?: number;
+  onStart?: (at: number) => void;
+  onSolved?: (elapsedMs: number) => void;
+  onTimeout?: () => void;
 }
 
 const VIEW = 400;
@@ -71,13 +80,6 @@ function ringRadius(index: number): number {
 /** Timer clock, only read in event handlers and the interval. */
 function clockNow(): number {
   return Date.now();
-}
-
-/** Duration as m:ss.d (tenths of a second). */
-function formatElapsed(ms: number): string {
-  const tenths = Math.floor(ms / 100);
-  const seconds = Math.floor(tenths / 10);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}.${tenths % 10}`;
 }
 
 function normalize(rotation: number): number {
@@ -106,10 +108,16 @@ export function LockpickBoard({
   vibration = true,
   highlightFits = false,
   foundHints = true,
+  timeLimitMs,
+  showTimeLimit = true,
+  startedAt,
+  onStart,
   onSolved,
+  onTimeout,
 }: LockpickBoardProps) {
   const { t } = useI18n();
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(startedAt !== undefined);
+  const [timedOut, setTimedOut] = useState(false);
   const [game, setGame] = useState<LockpickState>(() => createGame(lock));
   const [selectedId, setSelectedId] = useState<string | null>(lock.picks[0]?.id ?? null);
   /** CUMULATIVE rotation per pick (unbounded): the CSS animation never spins all the way round from 31 to 0. */
@@ -120,11 +128,17 @@ export function LockpickBoard({
   const drag = useRef<{ angle: number; x: number; touch: boolean; moved: boolean } | null>(null);
   /** Picks the player found "fitting", for the given ring only. */
   const [found, setFound] = useState<{ ring: number; ids: ReadonlySet<string> }>({ ring: 0, ids: new Set() });
-  const [timer, setTimer] = useState<{ start: number | null; end: number | null; now: number }>({ start: null, end: null, now: 0 });
+  const [timer, setTimer] = useState<{ start: number | null; end: number | null; now: number }>(() => ({
+    start: startedAt ?? null,
+    end: null,
+    now: startedAt ?? 0,
+  }));
   const intervalRef = useRef<number | null>(null);
 
   const ring = activeRing(game);
   const solved = ring === -1;
+  /** Solved or out of time: no more moves. */
+  const finished = solved || timedOut;
   const remaining = useMemo(() => remainingGaps(lock, game.placements), [lock, game.placements]);
   const occupancy = useMemo(() => ringOccupancy(game), [game]);
   const fits = useMemo(
@@ -152,33 +166,65 @@ export function LockpickBoard({
     if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
     intervalRef.current = null;
   };
-  // The timer interval must not outlive the board (new lock = new board).
-  useEffect(
-    () => () => {
-      if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
-    },
-    [],
-  );
-  const elapsed = timer.start === null ? 0 : (timer.end ?? timer.now) - timer.start;
+  // The interval reads the latest props through this ref (it is created once per start).
+  const live = useRef({ timeLimitMs, onTimeout, sound });
+  useEffect(() => {
+    live.current = { timeLimitMs, onTimeout, sound };
+  });
 
-  const selected = !solved && selectedId && !isPickUsed(game, selectedId) ? lock.picks.find((p) => p.id === selectedId) ?? null : null;
+  /** Starts the timer interval; the attempt fails once the time limit is reached. */
+  const startTicking = useCallback((start: number) => {
+    const tick = () => {
+      const now = clockNow();
+      const { timeLimitMs: limit, onTimeout: timeout, sound: play } = live.current;
+      if (limit !== undefined && now - start >= limit) {
+        if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        setTimer({ start, end: start + limit, now });
+        setTimedOut(true);
+        play('deny');
+        timeout?.();
+        return;
+      }
+      setTimer((tm) => ({ ...tm, now }));
+    };
+    if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+    intervalRef.current = window.setInterval(tick, 50);
+    tick();
+  }, []);
+
+  // Resumed attempt: the timer goes on from where it was. The interval never outlives the board.
+  useEffect(() => {
+    if (startedAt !== undefined) startTicking(startedAt);
+    return () => {
+      if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at mount
+  }, []);
+  const elapsed = timer.start === null ? 0 : (timer.end ?? timer.now) - timer.start;
+  /** With a visible time limit, the timer shows the time LEFT. */
+  const countdown = timeLimitMs !== undefined && showTimeLimit;
+  const shown = countdown ? Math.max(0, timeLimitMs - elapsed) : elapsed;
+  const hurry = countdown && !solved && shown <= 10_000;
+
+  const selected = !finished && selectedId && !isPickUsed(game, selectedId) ? lock.picks.find((p) => p.id === selectedId) ?? null : null;
   const selectedRotation = selected ? rotations[selected.id] ?? 0 : 0;
-  const ghostFits = selected && !solved ? isSubset(rotateMask(selected.teeth, selectedRotation), remaining[ring]) : false;
+  const ghostFits = selected && !finished ? isSubset(rotateMask(selected.teeth, selectedRotation), remaining[ring]) : false;
 
   /** Does the pick fit the current ring at this rotation? */
-  const fitsAt = (teeth: number, rotation: number) => !solved && isSubset(rotateMask(teeth, normalize(rotation)), remaining[ring]);
+  const fitsAt = (teeth: number, rotation: number) => !finished && isSubset(rotateMask(teeth, normalize(rotation)), remaining[ring]);
 
   const begin = () => {
     setStarted(true);
     const now = clockNow();
     setTimer({ start: now, end: null, now });
-    stopTicking();
-    intervalRef.current = window.setInterval(() => setTimer((tm) => ({ ...tm, now: clockNow() })), 50);
+    startTicking(now);
+    onStart?.(now);
     sound('select');
   };
 
   const select = (id: string) => {
-    if (!started || isPickUsed(game, id) || solved) return;
+    if (!started || isPickUsed(game, id) || finished) return;
     setSelectedId(id);
     const pick = lock.picks.find((p) => p.id === id);
     if (pick && fitsAt(pick.teeth, rotations[id] ?? 0)) {
@@ -190,7 +236,7 @@ export function LockpickBoard({
   };
 
   const rotate = (delta: number) => {
-    if (!selected || solved) return;
+    if (!selected || finished) return;
     const nextRotation = selectedRotation + delta;
     // Functional update: several drag steps may arrive before the next render.
     setRotations((r) => ({ ...r, [selected.id]: (r[selected.id] ?? 0) + delta }));
@@ -204,7 +250,7 @@ export function LockpickBoard({
   };
 
   const insert = () => {
-    if (!selected || solved) return;
+    if (!selected || finished) return;
     const next = place(game, selected.id, normalize(selectedRotation));
     if (!next) {
       setShakeKey((k) => k + 1);
@@ -218,7 +264,7 @@ export function LockpickBoard({
       stopTicking();
       setTimer((tm) => ({ ...tm, end: now, now }));
       sound('unlock');
-      onSolved?.();
+      onSolved?.(timer.start === null ? 0 : now - timer.start);
     } else if (nextRing !== ring) {
       sound('ringOpen');
       setPulseRing((p) => ({ ring, key: (p?.key ?? 0) + 1 }));
@@ -232,7 +278,7 @@ export function LockpickBoard({
 
   const undoLast = () => {
     const last = game.placements[game.placements.length - 1];
-    if (!last) return;
+    if (!last || finished) return;
     setGame(undo(game));
     setSelectedId(last.pickId);
     sound('undo');
@@ -339,7 +385,7 @@ export function LockpickBoard({
               width="100%"
               role="img"
               aria-label={solved ? t.solved : `${t.boardAria}, ${t.ringAria(ring + 1, lock.rings.length)}`}
-              style={{ touchAction: 'none', cursor: solved ? 'default' : 'grab', display: 'block', userSelect: 'none' }}
+              style={{ touchAction: 'none', cursor: finished ? 'default' : 'grab', display: 'block', userSelect: 'none' }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
@@ -449,14 +495,14 @@ export function LockpickBoard({
               py: 0.25,
               borderRadius: 1,
               bgcolor: 'rgba(0,0,0,0.35)',
-              color: timer.end !== null ? C.gold : C.steel,
+              color: solved ? C.gold : hurry ? C.miss : C.steel,
               fontFamily: 'monospace',
               fontWeight: 700,
               fontVariantNumeric: 'tabular-nums',
               pointerEvents: 'none',
             }}
           >
-            {formatElapsed(elapsed)}
+            {formatDuration(shown)}
           </Typography>
           {!started && (
             <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -496,14 +542,14 @@ export function LockpickBoard({
               <IconButton
                 aria-label={t.undo}
                 onClick={undoLast}
-                disabled={game.placements.length === 0 || solved}
+                disabled={game.placements.length === 0 || finished}
                 sx={{ color: C.steel, bgcolor: 'rgba(0,0,0,0.35)', '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' } }}
               >
                 <UndoRoundedIcon />
               </IconButton>
             </span>
           </Tooltip>
-          {solved && (
+          {finished && (
             <Box
               sx={{
                 position: 'absolute',
@@ -517,9 +563,10 @@ export function LockpickBoard({
             >
               <Typography
                 variant="h5"
-                sx={{ fontWeight: 800, color: C.gold, textShadow: '0 2px 12px #000, 0 0 2px #000', px: 2, py: 1, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.55)' }}
+                sx={{ fontWeight: 800, color: solved ? C.gold : C.miss, textShadow: '0 2px 12px #000, 0 0 2px #000', px: 2, py: 1, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.55)' }}
+                data-testid="board-end"
               >
-                {t.solved}
+                {solved ? t.solved : t.timeUp}
               </Typography>
             </Box>
           )}
@@ -551,7 +598,7 @@ export function LockpickBoard({
                   component="button"
                   type="button"
                   onClick={() => select(pick.id)}
-                  disabled={used || solved}
+                  disabled={used || finished}
                   aria-label={t.pick(index + 1, used)}
                   aria-pressed={isSelected}
                   sx={{
@@ -564,7 +611,7 @@ export function LockpickBoard({
                     bgcolor: isSelected ? 'rgba(226,184,103,0.16)' : foundNow ? 'rgba(245,220,60,0.08)' : 'rgba(0,0,0,0.25)',
                     // Selection: outer glow, still visible on a green or yellow pick.
                     boxShadow: isSelected ? `0 0 0 3px ${C.brassBright}66` : 'none',
-                    cursor: used || solved ? 'default' : 'pointer',
+                    cursor: used || finished ? 'default' : 'pointer',
                     opacity: used ? 0.25 : 1,
                     display: 'flex',
                     flexDirection: 'column',

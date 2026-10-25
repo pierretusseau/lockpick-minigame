@@ -1,27 +1,9 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
 import App from './App';
-import { I18nProvider } from './i18n';
-import './index.css';
+import PlayerApp from './PlayerApp';
+import { Root } from './Root';
 
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: { main: '#e2b867' },
-    background: { default: '#0f0c08', paper: '#1c1712' },
-  },
-  shape: { borderRadius: 8 },
-});
+// A link prepared by the GM (`?s=…`) opens the player view: the lock only, no settings.
+const sharedCode = new URLSearchParams(window.location.search).get('s');
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <I18nProvider>
-        <App />
-      </I18nProvider>
-    </ThemeProvider>
-  </StrictMode>,
-);
+createRoot(document.getElementById('root')!).render(<Root>{sharedCode ? <PlayerApp code={sharedCode} /> : <App />}</Root>);

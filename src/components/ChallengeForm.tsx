@@ -2,6 +2,9 @@
  * The challenge, kept to the minimum: DC set by the GM, the character's bonus, the d20 rolled at
  * the table — then the resulting lock in a coloured frame (see `resolveChallenge`). The maths are
  * explained in the help dialog, the d20 tiers in a tooltip.
+ *
+ * GM link (`secret`): the DC is hidden and there is NO result frame — the player must not know
+ * whether the roll made the lock easier or harder. "Pick the lock" hands the bonus and d20 over.
  */
 import { useState } from 'react';
 import Box from '@mui/material/Box';
@@ -39,17 +42,20 @@ function parseInteger(text: string): number | null {
 
 export interface ChallengeFormProps {
   /** Bumped by "New challenge": the d20 field is cleared, the DC and bonus stay. */
-  round: number;
+  round?: number;
   houseTiers: boolean;
-  onHouseTiersChange: (value: boolean) => void;
-  onStart: (setup: GameSetup) => void;
+  /** Absent: the d20 tiers are fixed (GM link) and the switch is hidden. */
+  onHouseTiersChange?: (value: boolean) => void;
+  onStart?: (setup: GameSetup) => void;
+  /** GM link: the DC is hidden, no result is shown; the bonus and d20 go straight to the caller. */
+  secret?: { initialBonus: number | null; onSubmit: (bonus: number, roll: number) => void };
 }
 
-export function ChallengeForm({ round, houseTiers, onHouseTiersChange, onStart }: ChallengeFormProps) {
+export function ChallengeForm({ round = 0, houseTiers, onHouseTiersChange, onStart, secret }: ChallengeFormProps) {
   const { t } = useI18n();
   const [choice, setChoice] = useState<string>('15');
   const [customText, setCustomText] = useState('');
-  const [bonusText, setBonusText] = useState('');
+  const [bonusText, setBonusText] = useState(() => (secret?.initialBonus != null ? String(secret.initialBonus) : ''));
   const [rollText, setRollText] = useState('');
   const [seenRound, setSeenRound] = useState(round);
   if (round !== seenRound) {
@@ -89,15 +95,17 @@ export function ChallengeForm({ round, houseTiers, onHouseTiersChange, onStart }
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
-        <TextField select size="small" label={t.dcLabel} value={choice} onChange={(e) => setChoice(e.target.value)} sx={{ flex: '1 1 220px' }}>
-          {DC_VALUES.map((value, i) => (
-            <MenuItem key={value} value={String(value)}>
-              {t.dcOptions[i]} ({value})
-            </MenuItem>
-          ))}
-          <MenuItem value={CUSTOM}>{t.dcCustom}</MenuItem>
-        </TextField>
-        {choice === CUSTOM && (
+        {!secret && (
+          <TextField select size="small" label={t.dcLabel} value={choice} onChange={(e) => setChoice(e.target.value)} sx={{ flex: '1 1 220px' }}>
+            {DC_VALUES.map((value, i) => (
+              <MenuItem key={value} value={String(value)}>
+                {t.dcOptions[i]} ({value})
+              </MenuItem>
+            ))}
+            <MenuItem value={CUSTOM}>{t.dcCustom}</MenuItem>
+          </TextField>
+        )}
+        {!secret && choice === CUSTOM && (
           <TextField
             size="small"
             type="number"
@@ -131,25 +139,33 @@ export function ChallengeForm({ round, houseTiers, onHouseTiersChange, onStart }
         />
       </Stack>
 
-      <Tooltip
-        placement="right"
-        title={
-          <Box component="ul" sx={{ m: 0, pl: 2 }}>
-            {t.tiersHelp.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </Box>
-        }
-      >
-        <FormControlLabel
-          sx={{ alignSelf: 'flex-start', mt: '8px !important' }}
-          control={<Switch size="small" checked={houseTiers} onChange={(e) => onHouseTiersChange(e.target.checked)} />}
-          label={<Typography variant="body2">{t.tiersLabel}</Typography>}
-          data-testid="tiers-switch"
-        />
-      </Tooltip>
+      {onHouseTiersChange && (
+        <Tooltip
+          placement="right"
+          title={
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              {t.tiersHelp.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </Box>
+          }
+        >
+          <FormControlLabel
+            sx={{ alignSelf: 'flex-start', mt: '8px !important' }}
+            control={<Switch size="small" checked={houseTiers} onChange={(e) => onHouseTiersChange(e.target.checked)} />}
+            label={<Typography variant="body2">{t.tiersLabel}</Typography>}
+            data-testid="tiers-switch"
+          />
+        </Tooltip>
+      )}
 
-      {result && tone && title ? (
+      {secret ? (
+        <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+          <Button variant="contained" disabled={!rollValid} onClick={() => secret.onSubmit(bonus, roll!)} data-testid="challenge-start">
+            {t.startButton}
+          </Button>
+        </Stack>
+      ) : result && tone && title ? (
         <Box
           data-testid="challenge-result"
           data-outcome={result.outcome}
@@ -168,7 +184,7 @@ export function ChallengeForm({ round, houseTiers, onHouseTiersChange, onStart }
         </Typography>
       )}
 
-      {result?.setup && (
+      {!secret && onStart && result?.setup && (
         <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
           <Button variant="contained" onClick={() => onStart(result.setup!)} data-testid="challenge-start">
             {result.alreadyOpen ? t.playForFun : t.startButton}

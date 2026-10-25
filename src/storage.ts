@@ -9,6 +9,10 @@ export const STORAGE_KEYS = {
   vibrationOff: `${PREFIX}vibration-off`,
   highlightFits: `${PREFIX}highlight-fits`,
   houseTiers: `${PREFIX}house-tiers`,
+  /** GM mode: the GM's named locks. */
+  gmLocks: `${PREFIX}gm-locks`,
+  /** Player of a GM link: the attempt made with this code (roll, start time, result). */
+  attempt: (code: string) => `${PREFIX}attempt:${code}`,
 } as const;
 
 /** Boolean state saved in localStorage: the player's choice survives a reload. */

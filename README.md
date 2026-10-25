@@ -8,6 +8,16 @@ Works with any d20 system (D&D 5e / 2024, Pathfinder, Chroniques Oubliées…). 
 
 *Version française plus bas.*
 
+## GM mode: keep the difficulty secret
+
+**https://pierretusseau.github.io/lockpick-minigame/mj/**
+
+The GM prepares named locks ("Crypt door", "Baron's chest") with a DC, optionally the player's bonus, an optional **time limit** (shown to the player or kept as a surprise) and the d20 tiers, then shares each one as a **link or a QR code**. A table shows the GM which lock each d20 would give; players never see it.
+
+Players opening the link enter their d20 (and their bonus, unless the GM pre-filled it): they never see the DC, the lock's level, nor whether their roll made the lock easier or harder — just a lock to pick. The attempt is remembered on their device for that link, so reloading gives back the same lock and the same running timer. At the end they get a short report to tell the GM ("Lock picked in 0:42.3", "Time's up").
+
+The GM's locks are saved in their browser only (no server). The link carries the whole lock in a scrambled code: the DC is not readable in the address bar, but this is not security — a determined player could decode it, and the number of rings already hints at how hard a lock is.
+
 ## How it works
 
 1. **The GM sets the DC** (5 very easy → 30 nearly impossible, or any value).
@@ -91,5 +101,7 @@ Un mini-jeu de crochetage façon Starfield pour le jeu de rôle sur table. Le MJ
 2. Le joueur indique son bonus et le d20 obtenu.
 3. Écart final = (DD − bonus) − (d20 − 10), qui donne le niveau de la serrure (tableau ci-dessus). Un test réussi selon les règles donne au plus une serrure Avancée.
 4. On remplit les encoches de chaque anneau avec les crochets, de l'extérieur vers le centre. Attention aux leurres.
+
+**Mode MJ** (`/mj/`) : le MJ prépare des serrures nommées (difficulté, bonus du joueur facultatif, temps limite affiché ou caché, paliers du d20) et partage chacune par lien ou QR code. Le joueur ne saisit que son d20 (et son bonus si le MJ ne l'a pas mis) : il ne voit ni la difficulté, ni le niveau, ni l'effet de son jet, seulement la serrure. La tentative est mémorisée sur son appareil (recharger ne relance ni le dé ni le chrono).
 
 Les **paliers du d20** (1 : échec critique, 2 à 5 : mauvais jet, 18-19 : aide en vert, 20 : réussite) sont une règle maison, activée par défaut et décochable. Le lien de la page contient la serrure : « Copier le lien » dans les Réglages, et tout le monde joue la même. Interface en français ou en anglais, à la souris ou au doigt.

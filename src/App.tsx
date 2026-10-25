@@ -9,7 +9,6 @@
  * the same link to every player.
  */
 import { useEffect, useMemo, useState } from 'react';
-import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
 import Dialog from '@mui/material/Dialog';
@@ -24,17 +23,9 @@ import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import GitHubIcon from '@mui/icons-material/GitHub';
-import HelpOutlineRoundedIcon from '@mui/icons-material/HelpOutlineRounded';
-import MobileOffRoundedIcon from '@mui/icons-material/MobileOffRounded';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
-import VibrationRoundedIcon from '@mui/icons-material/VibrationRounded';
-import VolumeOffRoundedIcon from '@mui/icons-material/VolumeOffRounded';
-import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded';
 import {
   LOCK_LEVEL_ORDER,
   LOCK_LEVEL_ROLL_RANGES,
@@ -44,15 +35,14 @@ import {
   type GameSetup,
   type LockLevel,
 } from './engine';
-import { useI18n, type Lang } from './i18n';
+import { useI18n } from './i18n';
 import { STORAGE_KEYS, usePersistedBoolean } from './storage';
+import { AppHeader } from './components/AppHeader';
 import { ChallengeForm } from './components/ChallengeForm';
 import { LockpickBoard } from './components/LockpickBoard';
-import { LockpicksIcon } from './components/LockpicksIcon';
-import { canVibrate } from './components/sound';
+import { SoundButtons } from './components/SoundButtons';
+import { useSoundPrefs } from './components/useSoundPrefs';
 import { COLORS } from './components/theme';
-
-export const REPO_URL = 'https://github.com/pierretusseau/lockpick-minigame';
 
 function isLevel(value: string | null): value is LockLevel {
   return !!value && (LOCK_LEVEL_ORDER as string[]).includes(value);
@@ -80,21 +70,18 @@ function initialState(): { game: Game; playing: boolean } {
 }
 
 export default function App() {
-  const { t, lang, setLang } = useI18n();
+  const { t } = useI18n();
   const [initial] = useState(initialState);
   const [game, setGame] = useState<Game>(initial.game);
   const [playing, setPlaying] = useState(initial.playing);
   const [round, setRound] = useState(0);
   const [challengeRound, setChallengeRound] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [seedDraft, setSeedDraft] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [muted, setMuted] = usePersistedBoolean(STORAGE_KEYS.soundMuted, false);
-  const [vibrationOff, setVibrationOff] = usePersistedBoolean(STORAGE_KEYS.vibrationOff, false);
+  const prefs = useSoundPrefs();
   const [highlightFits, setHighlightFits] = usePersistedBoolean(STORAGE_KEYS.highlightFits, false);
   const [houseTiers, setHouseTiers] = usePersistedBoolean(STORAGE_KEYS.houseTiers, true);
-  const [vibrationSupported] = useState(canVibrate);
 
   const lock = useMemo(
     () => generateLock(game.seed, game.level, game.hardened ? POOR_ROLL_HARDENING : undefined),
@@ -106,11 +93,6 @@ export default function App() {
     const query = playing ? `?${new URLSearchParams({ seed: game.seed, level: game.level }).toString()}` : '';
     window.history.replaceState(null, '', `${window.location.pathname}${query}`);
   }, [playing, game.seed, game.level]);
-
-  useEffect(() => {
-    document.documentElement.lang = lang;
-    document.title = t.appTitle;
-  }, [lang, t.appTitle]);
 
   /** A lock chosen in the settings: no roll effect. */
   const playPlain = (patch: Partial<Pick<Game, 'seed' | 'level'>>) => {
@@ -132,43 +114,24 @@ export default function App() {
   };
 
   const draft = seedDraft ?? game.seed;
-  const iconSx = { color: COLORS.steel };
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 2 }}>
-        <Box sx={{ color: COLORS.brassBright, display: 'flex' }}>
-          <LockpicksIcon size={32} />
-        </Box>
-        <Typography variant="h4" component="h1" sx={{ flex: 1, fontWeight: 700, fontSize: { xs: '1.35rem', sm: '2rem' } }}>
-          {t.appTitle}
-        </Typography>
-        <Tooltip title={t.help}>
-          <IconButton aria-label={t.help} onClick={() => setHelpOpen(true)} data-testid="open-help">
-            <HelpOutlineRoundedIcon />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={t.settings}>
-          <IconButton aria-label={t.settings} onClick={() => setSettingsOpen(true)} data-testid="open-settings">
-            <TuneRoundedIcon />
-          </IconButton>
-        </Tooltip>
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={lang}
-          onChange={(_, value: Lang | null) => value && setLang(value)}
-          aria-label={t.languageLabel}
-        >
-          <ToggleButton value="en">EN</ToggleButton>
-          <ToggleButton value="fr">FR</ToggleButton>
-        </ToggleButtonGroup>
-        <Tooltip title={t.sourceCode}>
-          <IconButton component="a" href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label={t.sourceCode} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
-            <GitHubIcon />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+      <AppHeader
+        title={t.appTitle}
+        actions={
+          <>
+            <Button href="mj/" size="small" data-testid="gm-mode">
+              {t.gmMode}
+            </Button>
+            <Tooltip title={t.settings}>
+              <IconButton aria-label={t.settings} onClick={() => setSettingsOpen(true)} data-testid="open-settings">
+                <TuneRoundedIcon />
+              </IconButton>
+            </Tooltip>
+          </>
+        }
+      />
 
       {/* Kept mounted while playing: the DC and bonus are still there for the next challenge. */}
       <Paper sx={{ p: 2, display: playing ? 'none' : 'block', maxWidth: 720, mx: 'auto' }} data-testid="challenge">
@@ -190,24 +153,13 @@ export default function App() {
             <Button size="small" onClick={newChallenge} data-testid="new-challenge">
               {t.newChallenge}
             </Button>
-            {vibrationSupported && (
-              <Tooltip title={vibrationOff ? t.vibrationOn : t.vibrationOff}>
-                <IconButton aria-label={vibrationOff ? t.vibrationOn : t.vibrationOff} onClick={() => setVibrationOff(!vibrationOff)} sx={iconSx}>
-                  {vibrationOff ? <MobileOffRoundedIcon /> : <VibrationRoundedIcon />}
-                </IconButton>
-              </Tooltip>
-            )}
-            <Tooltip title={muted ? t.soundOn : t.soundOff}>
-              <IconButton aria-label={muted ? t.soundOn : t.soundOff} onClick={() => setMuted(!muted)} sx={iconSx} data-testid="toggle-sound">
-                {muted ? <VolumeOffRoundedIcon /> : <VolumeUpRoundedIcon />}
-              </IconButton>
-            </Tooltip>
+            <SoundButtons prefs={prefs} />
           </Stack>
           <LockpickBoard
             key={`${game.seed}:${game.level}:${game.hardened}:${round}`}
             lock={lock}
-            muted={muted}
-            vibration={!vibrationOff}
+            muted={prefs.muted}
+            vibration={!prefs.vibrationOff}
             highlightFits={game.aid || highlightFits}
             foundHints={game.foundHints}
           />
@@ -280,38 +232,6 @@ export default function App() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSettingsOpen(false)}>{t.close}</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{t.howTitle}</DialogTitle>
-        <DialogContent>
-          <Box component="ul" sx={{ mt: 0, pl: 2.5 }}>
-            {t.how.map((line) => (
-              <Typography component="li" variant="body2" key={line} sx={{ mb: 0.75 }}>
-                {line}
-              </Typography>
-            ))}
-          </Box>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mt: 2 }}>
-            {t.rulesTitle}
-          </Typography>
-          <Box component="ul" sx={{ mt: 0.5, pl: 2.5 }}>
-            {t.rules.map((line) => (
-              <Typography component="li" variant="body2" key={line} sx={{ mb: 0.75 }}>
-                {line}
-              </Typography>
-            ))}
-          </Box>
-          <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 2 }}>
-            {t.credits}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button component="a" href={REPO_URL} target="_blank" rel="noopener noreferrer" startIcon={<GitHubIcon />}>
-            GitHub
-          </Button>
-          <Button onClick={() => setHelpOpen(false)}>{t.close}</Button>
         </DialogActions>
       </Dialog>
 

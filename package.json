@@ -16,11 +16,13 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.5.0",
     "@mui/material": "^9.5.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
@@ -29,6 +31,6 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   },
-  "description": "A Starfield-style lockpicking mini-game for tabletop RPGs (D&D, Chroniques Oubli\u00e9es\u2026).",
+  "description": "A Starfield-style lockpicking mini-game for tabletop RPGs (D&D, Chroniques Oubliées…).",
   "license": "MIT"
 }
