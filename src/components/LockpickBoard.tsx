@@ -6,12 +6,12 @@
  * - choose a pick: click it in the list;
  * - rotate: drag around the lock (mouse) or swipe in a straight line, left/right (finger);
  * - insert: click the lock without dragging;
- * - undo: button at the top right of the lock (unlimited).
+ * - undo: button above the lock, on the right (unlimited).
  *
  * Yellow: a pick for which the player found, while rotating it, a position that fits the current
  * ring. The hint is cleared when the ring changes (it no longer means anything).
  *
- * Timer at the top left: at 0 on a new lock, it starts with the "Start" button (lock blurred until
+ * Timer above the lock, on the left: at 0 on a new lock, it starts with the "Start" button (lock blurred until
  * then) and stops when the lock opens.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
@@ -371,205 +371,206 @@ export function LockpickBoard({
             '@media (prefers-reduced-motion: reduce)': { '& *': { animation: 'none !important', transition: 'none !important' } },
           }}
         >
-          <Box
-            key={shakeKey}
-            sx={{
-              animation: shakeKey ? 'lockpickShake 260ms ease-in-out' : undefined,
-              filter: started ? 'none' : 'blur(10px)',
-              transition: 'filter 300ms ease-out',
-            }}
-          >
-            <svg
-              ref={svgRef}
-              viewBox={`0 0 ${VIEW} ${VIEW}`}
-              width="100%"
-              role="img"
-              aria-label={solved ? t.solved : `${t.boardAria}, ${t.ringAria(ring + 1, lock.rings.length)}`}
-              style={{ touchAction: 'none', cursor: finished ? 'default' : 'grab', display: 'block', userSelect: 'none' }}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={() => (drag.current = null)}
-            >
-              <defs>
-                <radialGradient id="lockpick-plate" cx="50%" cy="45%" r="60%">
-                  <stop offset="0%" stopColor="#3a2c1d" />
-                  <stop offset="100%" stopColor={C.background} />
-                </radialGradient>
-                <radialGradient id="lockpick-core" cx="40%" cy="35%" r="70%">
-                  <stop offset="0%" stopColor={C.brassBright} />
-                  <stop offset="100%" stopColor={C.brassDim} />
-                </radialGradient>
-              </defs>
-              <circle cx={CENTER} cy={CENTER} r={CENTER - 2} fill="url(#lockpick-plate)" stroke={C.brassDim} strokeWidth={3} />
-              <g
-                style={{
-                  transformOrigin: `${CENTER}px ${CENTER}px`,
-                  animation: solved ? 'lockpickOpen 700ms cubic-bezier(.5,0,.2,1) forwards' : undefined,
-                }}
-              >
-                {lock.rings.map((r, i) => {
-                  const radius = ringRadius(i);
-                  const done = solved || i < ring;
-                  const isActive = i === ring;
-                  const stroke = done ? C.gold : isActive ? C.brass : C.brassDim;
-                  const notchW = ((2 * Math.PI * radius) / POSITIONS) * 0.55;
-                  return (
-                    <g key={i} opacity={done || isActive ? 1 : 0.55}>
-                      <circle cx={CENTER} cy={CENTER} r={radius} fill="none" stroke={stroke} strokeWidth={BAND} />
-                      {isActive && (
-                        <circle cx={CENTER} cy={CENTER} r={radius} fill="none" stroke={C.brassBright} strokeOpacity={0.35} strokeWidth={BAND + 4} />
-                      )}
-                      {positionsFromMask(r.gaps).map((p) => {
-                        const filledBy = occupancy[i].get(p);
-                        return (
-                          <g key={p}>
-                            <Slot radius={radius} position={p} width={notchW} height={BAND - 3} fill={C.notch} />
-                            {filledBy && <Slot radius={radius} position={p} width={notchW * 0.7} height={BAND - 6} fill={done ? '#fff4cf' : C.steel} />}
-                          </g>
-                        );
-                      })}
-                      {pulseRing?.ring === i && (
-                        <circle
-                          key={pulseRing.key}
-                          cx={CENTER}
-                          cy={CENTER}
-                          r={radius}
-                          fill="none"
-                          stroke={C.gold}
-                          style={{ animation: 'lockpickPulse 600ms ease-out forwards' }}
-                        />
-                      )}
-                    </g>
-                  );
-                })}
-                {/* Selected pick overlaid on the active ring. */}
-                {selected && !solved && (
-                  <g
-                    style={{
-                      transformOrigin: `${CENTER}px ${CENTER}px`,
-                      transform: `rotate(${selectedRotation * STEP_DEG}deg)`,
-                      transition: 'transform 110ms ease-out',
-                    }}
-                  >
-                    {positionsFromMask(selected.teeth).map((p) => {
-                      const absolute = normalize(p + selectedRotation);
-                      const ok = ((remaining[ring] >>> absolute) & 1) === 1;
-                      return (
-                        <Slot
-                          key={p}
-                          radius={ringRadius(ring)}
-                          position={p}
-                          width={((2 * Math.PI * ringRadius(ring)) / POSITIONS) * 0.5}
-                          height={BAND + 8}
-                          fill={ok ? C.fit : C.miss}
-                          opacity={0.9}
-                        />
-                      );
-                    })}
-                  </g>
-                )}
-                <circle
-                  cx={CENTER}
-                  cy={CENTER}
-                  r={ringRadius(lock.rings.length - 1) - BAND - 6}
-                  fill="url(#lockpick-core)"
-                  stroke={ghostFits ? C.fit : C.brassDim}
-                  strokeWidth={3}
-                />
-                {/* Stylised keyhole. */}
-                <circle cx={CENTER} cy={CENTER - 8} r={9} fill={C.notch} />
-                <path d={`M ${CENTER - 6} ${CENTER - 4} L ${CENTER + 6} ${CENTER - 4} L ${CENTER + 4} ${CENTER + 18} L ${CENTER - 4} ${CENTER + 18} Z`} fill={C.notch} />
-              </g>
-            </svg>
-          </Box>
-          <Typography
-            component="div"
-            aria-label={t.timer}
-            data-testid="lockpick-timer"
-            sx={{
-              position: 'absolute',
-              top: 4,
-              left: 4,
-              px: 1,
-              py: 0.25,
-              borderRadius: 1,
-              bgcolor: 'rgba(0,0,0,0.35)',
-              color: solved ? C.gold : hurry ? C.miss : C.steel,
-              fontFamily: 'monospace',
-              fontWeight: 700,
-              fontVariantNumeric: 'tabular-nums',
-              pointerEvents: 'none',
-            }}
-          >
-            {formatDuration(shown)}
-          </Typography>
-          {!started && (
-            <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Box
-                component="button"
-                type="button"
-                onClick={begin}
-                data-testid="lockpick-start"
-                sx={{
-                  width: 132,
-                  height: 132,
-                  borderRadius: '50%',
-                  border: `3px solid ${C.brassBright}`,
-                  bgcolor: 'rgba(23,18,12,0.85)',
-                  color: C.brassBright,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 0.75,
-                  cursor: 'pointer',
-                  font: 'inherit',
-                  fontWeight: 800,
-                  letterSpacing: 0.5,
-                  boxShadow: '0 0 24px rgba(0,0,0,0.6)',
-                  transition: 'transform 120ms, background-color 120ms',
-                  '&:hover': { transform: 'scale(1.05)', bgcolor: 'rgba(40,30,18,0.95)' },
-                }}
-              >
-                <LockpicksIcon size={44} />
-                {t.start}
-              </Box>
-            </Box>
-          )}
-          <Tooltip title={t.undoTooltip}>
-            <span style={{ position: 'absolute', top: 0, right: 0 }}>
-              <IconButton
-                aria-label={t.undo}
-                onClick={undoLast}
-                disabled={game.placements.length === 0 || finished}
-                sx={{ color: C.steel, bgcolor: 'rgba(0,0,0,0.35)', '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' } }}
-              >
-                <UndoRoundedIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-          {finished && (
-            <Box
+          {/* Timer and undo ABOVE the lock, not over it: on mobile they got in the way of the swipe. */}
+          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography
+              component="div"
+              aria-label={t.timer}
+              data-testid="lockpick-timer"
               sx={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                pointerEvents: 'none',
-                animation: 'lockpickFadeIn 400ms 500ms ease-out both',
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+                bgcolor: 'rgba(0,0,0,0.35)',
+                color: solved ? C.gold : hurry ? C.miss : C.steel,
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                fontVariantNumeric: 'tabular-nums',
               }}
             >
-              <Typography
-                variant="h5"
-                sx={{ fontWeight: 800, color: solved ? C.gold : C.miss, textShadow: '0 2px 12px #000, 0 0 2px #000', px: 2, py: 1, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.55)' }}
-                data-testid="board-end"
+              {formatDuration(shown)}
+            </Typography>
+            <Tooltip title={t.undoTooltip}>
+              <span>
+                <IconButton
+                  aria-label={t.undo}
+                  onClick={undoLast}
+                  disabled={game.placements.length === 0 || finished}
+                  sx={{ color: C.steel, bgcolor: 'rgba(0,0,0,0.35)', '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' } }}
+                >
+                  <UndoRoundedIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
+          <Box sx={{ position: 'relative' }}>
+            <Box
+              key={shakeKey}
+              sx={{
+                animation: shakeKey ? 'lockpickShake 260ms ease-in-out' : undefined,
+                filter: started ? 'none' : 'blur(10px)',
+                transition: 'filter 300ms ease-out',
+              }}
+            >
+              <svg
+                ref={svgRef}
+                viewBox={`0 0 ${VIEW} ${VIEW}`}
+                width="100%"
+                role="img"
+                aria-label={solved ? t.solved : `${t.boardAria}, ${t.ringAria(ring + 1, lock.rings.length)}`}
+                style={{ touchAction: 'none', cursor: finished ? 'default' : 'grab', display: 'block', userSelect: 'none' }}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={() => (drag.current = null)}
               >
-                {solved ? t.solved : t.timeUp}
-              </Typography>
+                <defs>
+                  <radialGradient id="lockpick-plate" cx="50%" cy="45%" r="60%">
+                    <stop offset="0%" stopColor="#3a2c1d" />
+                    <stop offset="100%" stopColor={C.background} />
+                  </radialGradient>
+                  <radialGradient id="lockpick-core" cx="40%" cy="35%" r="70%">
+                    <stop offset="0%" stopColor={C.brassBright} />
+                    <stop offset="100%" stopColor={C.brassDim} />
+                  </radialGradient>
+                </defs>
+                <circle cx={CENTER} cy={CENTER} r={CENTER - 2} fill="url(#lockpick-plate)" stroke={C.brassDim} strokeWidth={3} />
+                <g
+                  style={{
+                    transformOrigin: `${CENTER}px ${CENTER}px`,
+                    animation: solved ? 'lockpickOpen 700ms cubic-bezier(.5,0,.2,1) forwards' : undefined,
+                  }}
+                >
+                  {lock.rings.map((r, i) => {
+                    const radius = ringRadius(i);
+                    const done = solved || i < ring;
+                    const isActive = i === ring;
+                    const stroke = done ? C.gold : isActive ? C.brass : C.brassDim;
+                    const notchW = ((2 * Math.PI * radius) / POSITIONS) * 0.55;
+                    return (
+                      <g key={i} opacity={done || isActive ? 1 : 0.55}>
+                        <circle cx={CENTER} cy={CENTER} r={radius} fill="none" stroke={stroke} strokeWidth={BAND} />
+                        {isActive && (
+                          <circle cx={CENTER} cy={CENTER} r={radius} fill="none" stroke={C.brassBright} strokeOpacity={0.35} strokeWidth={BAND + 4} />
+                        )}
+                        {positionsFromMask(r.gaps).map((p) => {
+                          const filledBy = occupancy[i].get(p);
+                          return (
+                            <g key={p}>
+                              <Slot radius={radius} position={p} width={notchW} height={BAND - 3} fill={C.notch} />
+                              {filledBy && <Slot radius={radius} position={p} width={notchW * 0.7} height={BAND - 6} fill={done ? '#fff4cf' : C.steel} />}
+                            </g>
+                          );
+                        })}
+                        {pulseRing?.ring === i && (
+                          <circle
+                            key={pulseRing.key}
+                            cx={CENTER}
+                            cy={CENTER}
+                            r={radius}
+                            fill="none"
+                            stroke={C.gold}
+                            style={{ animation: 'lockpickPulse 600ms ease-out forwards' }}
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                  {/* Selected pick overlaid on the active ring. */}
+                  {selected && !solved && (
+                    <g
+                      style={{
+                        transformOrigin: `${CENTER}px ${CENTER}px`,
+                        transform: `rotate(${selectedRotation * STEP_DEG}deg)`,
+                        transition: 'transform 110ms ease-out',
+                      }}
+                    >
+                      {positionsFromMask(selected.teeth).map((p) => {
+                        const absolute = normalize(p + selectedRotation);
+                        const ok = ((remaining[ring] >>> absolute) & 1) === 1;
+                        return (
+                          <Slot
+                            key={p}
+                            radius={ringRadius(ring)}
+                            position={p}
+                            width={((2 * Math.PI * ringRadius(ring)) / POSITIONS) * 0.5}
+                            height={BAND + 8}
+                            fill={ok ? C.fit : C.miss}
+                            opacity={0.9}
+                          />
+                        );
+                      })}
+                    </g>
+                  )}
+                  <circle
+                    cx={CENTER}
+                    cy={CENTER}
+                    r={ringRadius(lock.rings.length - 1) - BAND - 6}
+                    fill="url(#lockpick-core)"
+                    stroke={ghostFits ? C.fit : C.brassDim}
+                    strokeWidth={3}
+                  />
+                  {/* Stylised keyhole. */}
+                  <circle cx={CENTER} cy={CENTER - 8} r={9} fill={C.notch} />
+                  <path d={`M ${CENTER - 6} ${CENTER - 4} L ${CENTER + 6} ${CENTER - 4} L ${CENTER + 4} ${CENTER + 18} L ${CENTER - 4} ${CENTER + 18} Z`} fill={C.notch} />
+                </g>
+              </svg>
             </Box>
-          )}
+            {!started && (
+              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={begin}
+                  data-testid="lockpick-start"
+                  sx={{
+                    width: 132,
+                    height: 132,
+                    borderRadius: '50%',
+                    border: `3px solid ${C.brassBright}`,
+                    bgcolor: 'rgba(23,18,12,0.85)',
+                    color: C.brassBright,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 0.75,
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    fontWeight: 800,
+                    letterSpacing: 0.5,
+                    boxShadow: '0 0 24px rgba(0,0,0,0.6)',
+                    transition: 'transform 120ms, background-color 120ms',
+                    '&:hover': { transform: 'scale(1.05)', bgcolor: 'rgba(40,30,18,0.95)' },
+                  }}
+                >
+                  <LockpicksIcon size={44} />
+                  {t.start}
+                </Box>
+              </Box>
+            )}
+            {finished && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: 'none',
+                  animation: 'lockpickFadeIn 400ms 500ms ease-out both',
+                }}
+              >
+                <Typography
+                  variant="h5"
+                  sx={{ fontWeight: 800, color: solved ? C.gold : C.miss, textShadow: '0 2px 12px #000, 0 0 2px #000', px: 2, py: 1, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.55)' }}
+                  data-testid="board-end"
+                >
+                  {solved ? t.solved : t.timeUp}
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Box>
 
         {/* 340 px basis on desktop only: in a column (mobile) it would become a height. */}
