@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lockpick-leaderboard",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": {
+    // Sites allowed to call the API (comma-separated).
+    "ALLOWED_ORIGINS": "https://pierretusseau.github.io,http://localhost:5173"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lockpick-leaderboard",
+      // Printed by `npx wrangler d1 create lockpick-leaderboard`.
+      "database_id": "b3c8eb75-4d33-4acd-a729-5b82c3a45134"
+    }
+  ]
+}

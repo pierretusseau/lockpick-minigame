@@ -64,6 +64,12 @@ On by default; untick it for rules as written (in D&D a natural 1 or 20 does not
 - **Yellow:** you found a position where this pick fits the current ring.
 - **Undo:** the arrow at the top right of the lock.
 
+### Leaderboard
+
+When a lock opens, the time goes on a leaderboard (a name is asked the first time): the best times of the level, and the best times on this very lock — handy for a race with a shared link. The trophy button shows any level's board. Runs with the green help are not ranked, nor GM-mode locks.
+
+The server checks every run by replaying its moves on the rebuilt lock, and refuses times too short for a human. The time itself is measured by the player's browser, so this keeps out lazy cheating, not a determined one. Only the chosen name, a random id of the browser and the time are stored.
+
 ### Same lock for everyone
 
 The URL holds the lock (`?seed=abc123&level=expert`). Open **Settings** (top right), **Copy link** and send it: everyone gets exactly the same lock, handy for a race at the table. Settings also let you play any level directly.
@@ -77,7 +83,22 @@ npm test           # engine tests (Vitest)
 npm run build      # static site in dist/
 ```
 
-Stack: Vite, React, TypeScript, MUI. 100 % client-side, no server, no tracking. Pushing to `main` deploys to GitHub Pages (`.github/workflows/deploy.yml`).
+Stack: Vite, React, TypeScript, MUI. The game is client-side, no tracking; the only server is the optional leaderboard. Pushing to `main` deploys to GitHub Pages (`.github/workflows/deploy.yml`).
+
+### Leaderboard server (`worker/`)
+
+A Cloudflare Worker with a D1 database (one table), both on the free plan. It reuses the game engine to check runs (`src/engine/verify.ts`).
+
+```bash
+cd worker
+npm install
+npx wrangler login
+npx wrangler d1 create lockpick-leaderboard   # copy the database_id into wrangler.jsonc
+npm run db:init                               # creates the table
+npm run deploy                                # prints the API address (https://….workers.dev)
+```
+
+Then set the repository variable `LEADERBOARD_URL` to that address (GitHub → Settings → Secrets and variables → Actions → Variables) and redeploy the site. Without it, the leaderboard is hidden. Locally: `npm run db:init:local && npm run dev` in `worker/`, and `VITE_LEADERBOARD_URL=http://localhost:8787 npm run dev` at the root.
 
 - `src/engine/` — pure game logic: lock generator (seeded, always solvable, decoys checked by a solver), game rules, DC → lock mapping. No React.
 - `src/components/` — the board (SVG), the challenge form, synthesised sounds (Web Audio, no audio files) and vibrations.
@@ -103,5 +124,7 @@ Un mini-jeu de crochetage façon Starfield pour le jeu de rôle sur table. Le MJ
 4. On remplit les encoches de chaque anneau avec les crochets, de l'extérieur vers le centre. Attention aux leurres.
 
 **Mode MJ** (`/mj/`) : le MJ prépare des serrures nommées (difficulté, bonus du joueur facultatif, temps limite affiché ou caché, paliers du d20) et partage chacune par lien ou QR code. Le joueur ne saisit que son d20 (et son bonus si le MJ ne l'a pas mis) : il ne voit ni la difficulté, ni le niveau, ni l'effet de son jet, seulement la serrure. La tentative est mémorisée sur son appareil (recharger ne relance ni le dé ni le chrono).
+
+**Classement** : à l'ouverture de la serrure, le temps entre dans le classement du niveau et dans celui de la serrure (pseudo demandé la première fois). Le serveur rejoue les coups pour vérifier la partie ; l'aide en vert et le mode MJ ne sont pas classés.
 
 Les **paliers du d20** (1 : échec critique, 2 à 5 : mauvais jet, 18-19 : aide en vert, 20 : réussite) sont une règle maison, activée par défaut et décochable. Le lien de la page contient la serrure : « Copier le lien » dans les Réglages, et tout le monde joue la même. Interface en français ou en anglais, à la souris ou au doigt.

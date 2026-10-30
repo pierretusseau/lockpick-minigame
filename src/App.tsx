@@ -25,6 +25,7 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import EmojiEventsRoundedIcon from '@mui/icons-material/EmojiEventsRounded';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 import {
   LOCK_LEVEL_ORDER,
@@ -34,6 +35,8 @@ import {
   newSeed,
   type GameSetup,
   type LockLevel,
+  type Placement,
+  type Run,
 } from './engine';
 import { useI18n } from './i18n';
 import { STORAGE_KEYS, usePersistedBoolean } from './storage';
@@ -42,6 +45,8 @@ import { ChallengeForm } from './components/ChallengeForm';
 import { LockpickBoard } from './components/LockpickBoard';
 import { SoundButtons } from './components/SoundButtons';
 import { useSoundPrefs } from './components/useSoundPrefs';
+import { LeaderboardDialog, SolvedLeaderboard } from './components/Leaderboard';
+import { leaderboardEnabled, type LockRef } from './leaderboard';
 import { COLORS } from './components/theme';
 
 function isLevel(value: string | null): value is LockLevel {
@@ -82,6 +87,20 @@ export default function App() {
   const prefs = useSoundPrefs();
   const [highlightFits, setHighlightFits] = usePersistedBoolean(STORAGE_KEYS.highlightFits, false);
   const [houseTiers, setHouseTiers] = usePersistedBoolean(STORAGE_KEYS.houseTiers, true);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  /** Lock opened on this board (`boardKey`), with its run if it can be ranked. */
+  const [finished, setFinished] = useState<{ boardKey: string; run: Run | null } | null>(null);
+  /** Board on which the green help was switched on at some point: not ranked. */
+  const [aidedKey, setAidedKey] = useState<string | null>(null);
+
+  const boardKey = `${game.seed}:${game.level}:${game.hardened}:${round}`;
+  const lockRef = useMemo<LockRef>(() => ({ seed: game.seed, level: game.level, hardened: game.hardened }), [game.seed, game.level, game.hardened]);
+
+  const onSolved = (timeMs: number, placements: Placement[]) => {
+    const ranked = !game.aid && !highlightFits && aidedKey !== boardKey;
+    const moves = placements.map(({ pickId, rotation }) => ({ pickId, rotation }));
+    setFinished({ boardKey, run: ranked ? { ...lockRef, moves, timeMs: Math.round(timeMs) } : null });
+  };
 
   const lock = useMemo(
     () => generateLock(game.seed, game.level, game.hardened ? POOR_ROLL_HARDENING : undefined),
@@ -115,12 +134,28 @@ export default function App() {
 
   const draft = seedDraft ?? game.seed;
 
+  /** Trophy: in the header on wide screens, next to the lock or the challenge on phones (the header is full). */
+  const leaderboardButton = (place: 'header' | 'inline') =>
+    leaderboardEnabled && (
+      <Tooltip title={t.leaderboard}>
+        <IconButton
+          aria-label={t.leaderboard}
+          onClick={() => setLeaderboardOpen(true)}
+          data-testid={place === 'header' ? 'open-leaderboard' : undefined}
+          sx={{ display: place === 'header' ? { xs: 'none', sm: 'inline-flex' } : { sm: 'none' } }}
+        >
+          <EmojiEventsRoundedIcon />
+        </IconButton>
+      </Tooltip>
+    );
+
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 3 } }}>
       <AppHeader
         title={t.appTitle}
         actions={
           <>
+            {leaderboardButton('header')}
             <Button href="mj/" size="small" data-testid="gm-mode">
               {t.gmMode}
             </Button>
@@ -135,9 +170,12 @@ export default function App() {
 
       {/* Kept mounted while playing: the DC and bonus are still there for the next challenge. */}
       <Paper sx={{ p: 2, display: playing ? 'none' : 'block', maxWidth: 720, mx: 'auto' }} data-testid="challenge">
-        <Typography variant="h6" component="h2" gutterBottom>
-          {t.challengeTitle}
-        </Typography>
+        <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}>
+          <Typography variant="h6" component="h2" sx={{ flex: 1 }}>
+            {t.challengeTitle}
+          </Typography>
+          {leaderboardButton('inline')}
+        </Stack>
         <ChallengeForm round={challengeRound} houseTiers={houseTiers} onHouseTiersChange={setHouseTiers} onStart={startChallenge} />
       </Paper>
 
@@ -153,17 +191,24 @@ export default function App() {
             <Button size="small" onClick={newChallenge} data-testid="new-challenge">
               {t.newChallenge}
             </Button>
+            {leaderboardButton('inline')}
             <SoundButtons prefs={prefs} />
           </Stack>
           <LockpickBoard
-            key={`${game.seed}:${game.level}:${game.hardened}:${round}`}
+            key={boardKey}
             lock={lock}
             muted={prefs.muted}
             vibration={!prefs.vibrationOff}
             highlightFits={game.aid || highlightFits}
             foundHints={game.foundHints}
+            onSolved={leaderboardEnabled ? onSolved : undefined}
           />
         </Paper>
+      )}
+      {playing && finished?.boardKey === boardKey && <SolvedLeaderboard key={boardKey} run={finished.run} lock={lockRef} />}
+
+      {leaderboardEnabled && (
+        <LeaderboardDialog open={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} level={game.level} lock={playing ? lockRef : null} />
       )}
 
       <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
@@ -227,7 +272,14 @@ export default function App() {
                 {t.copyLink}
               </Button>
             </Stack>
-            <FormControlLabel control={<Switch checked={highlightFits} onChange={(e) => setHighlightFits(e.target.checked)} />} label={t.highlightFits} />
+            <FormControlLabel control={<Switch
+                  checked={highlightFits}
+                  onChange={(e) => {
+                    setHighlightFits(e.target.checked);
+                    // On at some point during this lock: not ranked, even if switched off again.
+                    if (playing) setAidedKey(boardKey);
+                  }}
+                />} label={t.highlightFits} />
           </Stack>
         </DialogContent>
         <DialogActions>

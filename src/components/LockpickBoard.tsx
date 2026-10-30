@@ -36,6 +36,7 @@ import {
   undo,
   type Lock,
   type LockpickState,
+  type Placement,
 } from '../engine';
 import { formatDuration } from '../format';
 import { useI18n } from '../i18n';
@@ -60,7 +61,8 @@ export interface LockpickBoardProps {
   /** Resumed attempt: when "Start" was pressed. The timer keeps running across reloads. */
   startedAt?: number;
   onStart?: (at: number) => void;
-  onSolved?: (elapsedMs: number) => void;
+  /** The lock opened: time since "Start" and the moves that opened it (leaderboard). */
+  onSolved?: (elapsedMs: number, placements: Placement[]) => void;
   onTimeout?: () => void;
 }
 
@@ -264,7 +266,7 @@ export function LockpickBoard({
       stopTicking();
       setTimer((tm) => ({ ...tm, end: now, now }));
       sound('unlock');
-      onSolved?.(timer.start === null ? 0 : now - timer.start);
+      onSolved?.(timer.start === null ? 0 : now - timer.start, next.placements);
     } else if (nextRing !== ring) {
       sound('ringOpen');
       setPulseRing((p) => ({ ring, key: (p?.key ?? 0) + 1 }));

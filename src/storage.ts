@@ -13,6 +13,9 @@ export const STORAGE_KEYS = {
   gmLocks: `${PREFIX}gm-locks`,
   /** Player of a GM link: the attempt made with this code (roll, start time, result). */
   attempt: (code: string) => `${PREFIX}attempt:${code}`,
+  /** Leaderboard: random id of this browser (never shown) and the player's name. */
+  playerId: `${PREFIX}player-id`,
+  playerName: `${PREFIX}player-name`,
 } as const;
 
 /** Boolean state saved in localStorage: the player's choice survives a reload. */
